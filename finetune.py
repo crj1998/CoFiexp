@@ -41,8 +41,8 @@ def evaluate(model, dataloader, device):
 def main(args):
 
     device = torch.device("cuda")
-    IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
-    IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
+    IMAGENET_DEFAULT_MEAN = (0.5, 0.5, 0.5)
+    IMAGENET_DEFAULT_STD = (0.5, 0.5, 0.5)
 
     train_transform = T.Compose([
         T.Resize(256, interpolation=T.InterpolationMode.BICUBIC),

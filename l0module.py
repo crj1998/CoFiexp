@@ -76,7 +76,7 @@ class L0Module(nn.Module):
     def initialize_one_module(self, module_name):
         default_mean = 5
         if module_name == "intermediate":
-            self.intermediate_loga = self.initialize_parameters(self.intermediate_size, self.num_hidden_layers, mean=None)
+            self.intermediate_loga = self.initialize_parameters(self.intermediate_size, self.num_hidden_layers, mean=0)
             self.add_one_module(
                 self.intermediate_loga, type_name="intermediate", 
                 parameter_per_dim=self.params_per_intermediate_dim, size=self.intermediate_size,
