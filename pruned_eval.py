@@ -38,7 +38,7 @@ dataloader = DataLoader(
     pin_memory=False,
 )
 
-exp_name = "teacher_spar70"
+exp_name = "spar70"
 
 
 model = vit_base_patch16_224(10)
@@ -56,7 +56,7 @@ l0module = l0module.to(device)
 zs = l0module.forward()
 results = l0module.calculate_model_size(zs)
 sparsity = results["pruned_sparsity"]
-
+print(results)
 
 
 

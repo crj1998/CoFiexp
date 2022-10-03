@@ -136,6 +136,7 @@ def main(args):
     fig = plot(heads, intermediates, f"Sparsity: default, Accuracy: {accuracy:.2%}")
     wandb.log({
         "test/accuracy": accuracy,
+        "test/accuracy_full": accuracy,
         "test/sparsity": sparsity,
         "pruned_structure": fig
     }, step=global_step)
@@ -253,6 +254,6 @@ if __name__ == "__main__":
 
 """
 CUDA_VISIBLE_DEVICES=1 python main.py --exp_name spar70_inter-5 --weights cache/cifar10_finetuned.pth --datapath ../../data
-CUDA_VISIBLE_DEVICES=3 python main.py --exp_name spar70_inter+5 --weights cache/cifar10_finetuned.pth --datapath ../../data
+CUDA_VISIBLE_DEVICES=1 python main.py --exp_name spar70_all0 --weights cache/cifar10_finetuned.pth --datapath ../../data
 CUDA_VISIBLE_DEVICES=0 python main.py --exp_name tmp --weights cache/cifar10_finetuned.pth --datapath ../../data
 """

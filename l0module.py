@@ -84,7 +84,7 @@ class L0Module(nn.Module):
             )
             self.prunable_model_size += self.params_per_mlp_layer * self.num_hidden_layers
         elif module_name == "heads":
-            self.heads_loga = self.initialize_parameters(self.num_attention_heads, self.num_hidden_layers, mean=default_mean)
+            self.heads_loga = self.initialize_parameters(self.num_attention_heads, self.num_hidden_layers, mean=0)
             self.add_one_module(
                 self.heads_loga, type_name="heads", 
                 parameter_per_dim=self.params_per_head, size=self.num_attention_heads,
@@ -172,10 +172,17 @@ class L0Module(nn.Module):
         target_sparsity = self.get_target_sparsity(pruned_steps) if self.lagrangian_warmup > 0 else self.target_sparsity
         expect_sparsity = 1 - self.get_num_parameters_and_constraint("hidden" in self.types) / self.prunable_model_size
 
+        # lagrangian_loss = (
+        #     self.lambda_1 * (expect_sparsity - target_sparsity).abs() + 
+        #     self.lambda_2 * (expect_sparsity - target_sparsity).square()
+        # )
+
+        zero = torch.tensor(0.0, device=expect_sparsity.device)
         lagrangian_loss = (
-            self.lambda_1 * (expect_sparsity - target_sparsity).abs() + 
-            self.lambda_2 * (expect_sparsity - target_sparsity).square()
+            self.lambda_1 * torch.maximum(target_sparsity - expect_sparsity, zero) + 
+            self.lambda_2 * torch.maximum(target_sparsity - expect_sparsity, zero).square()
         )
+
 
         return lagrangian_loss, expect_sparsity.detach().item(), target_sparsity
 
