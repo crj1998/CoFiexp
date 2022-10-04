@@ -84,7 +84,7 @@ class L0Module(nn.Module):
             )
             self.prunable_model_size += self.params_per_mlp_layer * self.num_hidden_layers
         elif module_name == "heads":
-            self.heads_loga = self.initialize_parameters(self.num_attention_heads, self.num_hidden_layers, mean=0)
+            self.heads_loga = self.initialize_parameters(self.num_attention_heads, self.num_hidden_layers, mean=default_mean)
             self.add_one_module(
                 self.heads_loga, type_name="heads", 
                 parameter_per_dim=self.params_per_head, size=self.num_attention_heads,
@@ -183,7 +183,6 @@ class L0Module(nn.Module):
             self.lambda_2 * torch.maximum(target_sparsity - expect_sparsity, zero).square()
         )
 
-
         return lagrangian_loss, expect_sparsity.detach().item(), target_sparsity
 
     # during training
@@ -197,10 +196,12 @@ class L0Module(nn.Module):
         return z
 
     # during inference
-    def _deterministic_z(self, size, loga):
+    def _deterministic_z(self, size, loga, soft=True):
+        soft_mask = torch.sigmoid(loga / self.temperature * self.magical_number)
+        if not soft:
+            return soft_mask 
         expected_num_zeros = size - self.score_loga(loga).sum().item()
         num_zeros = round(expected_num_zeros)
-        soft_mask = torch.sigmoid(loga / self.temperature * self.magical_number)
         if num_zeros > 0:
             if soft_mask.ndim == 0:
                 soft_mask = torch.tensor(0).to(loga.device)
@@ -247,7 +248,7 @@ class L0Module(nn.Module):
         }
         return results
 
-    def forward(self):
+    def forward(self, soft=True):
         zs = {f"{t}_z": [] for t in self.types}
 
         if self.training:
@@ -260,11 +261,11 @@ class L0Module(nn.Module):
                 if t != "hidden": # hidden is not a per layer sample
                     tmp = []
                     for loga in self.z_logas[t]:
-                        z = self._deterministic_z(self.sizes[t], loga.detach())
+                        z = self._deterministic_z(self.sizes[t], loga.detach(), soft=soft)
                         tmp.append(z.reshape(self.shapes[t][1:]))
                     zs[f"{t}_z"] = torch.stack(tmp)
                 else:
-                    zs[f"{t}_z"] = self._deterministic_z(self.sizes[t], self.hidden_loga.detach())
+                    zs[f"{t}_z"] = self._deterministic_z(self.sizes[t], self.hidden_loga.detach(), soft=soft)
         return zs 
 
 if __name__ == '__main__':
