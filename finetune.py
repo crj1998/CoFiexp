@@ -70,7 +70,6 @@ def main(args):
         T.Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
     ])
 
-
     train_set = eval(f"CIFAR{args.num_classes}")(args.datapath, download=False, train=True, transform=train_transform)
     valid_set = eval(f"CIFAR{args.num_classes}")(args.datapath, download=False, train=False, transform=test_transform)
 
@@ -83,6 +82,22 @@ def main(args):
     model.load_state_dict(torch.load(args.weights))
     model.reset_classifier(args.num_classes)
     model.to(device)
+    
+    
+    from pruned import prune_vit
+    from l0module import L0Module
+
+    exp_name = "spar70"
+    l0module = L0Module(model.config)
+    l0module.load_state_dict(torch.load(f"cache/{exp_name}/l0_module.pth"))
+    l0module = l0module.to(device)
+    l0module.eval()
+    zs = l0module.forward()
+
+    state_dict = torch.load(f"cache/{exp_name}/model.pth")
+    model = prune_vit(vit_base_patch16_224(args.num_classes, True), state_dict, zs)
+    model.eval()
+    model = model.to(device)
 
     no_decay = ["bias", "layernorm"]
     freeze_keywords = []
@@ -96,12 +111,10 @@ def main(args):
         }
     ]
 
-    # optimizer = optim.AdamW(model_params, lr=args.learning_rate, betas=(0.9, 0.999), eps=1e-08)
-    optimizer = optim.SGD(model_params, lr=args.learning_rate, momentum=0.9)
+    optimizer = optim.AdamW(model_params, lr=args.learning_rate, betas=(0.9, 0.999), eps=1e-08)
 
     # define an optimizer for the "sharpness-aware" update
     # optimizer = SAM(model_params, base_optimizer=optim.AdamW, rho=0.1, adaptive=True, lr=args.learning_rate, betas=(0.9, 0.999), eps=1e-08)
-    # optimizer = SAM(model_params, base_optimizer=optim.SGD, rho=0.1, adaptive=True, lr=args.learning_rate, momentum=0.9)
 
     lr_scheduler = cosine_schedule_with_warmup(
         optimizer, num_warmup_steps=args.lr_warmup*num_steps_per_epoch, num_training_steps=args.epochs*num_steps_per_epoch
@@ -179,7 +192,7 @@ if __name__ == "__main__":
     main(args)
 
 """
-CUDA_VISIBLE_DEVICES=7 python finetune.py --weights cache/pretrained.pth --datapath ../../data --num_classes 100
+CUDA_VISIBLE_DEVICES=3 python finetune.py --weights cache/pretrained.pth --datapath ../../data --num_classes 10
 
 setting       accuracy
 AdamW          92.34

@@ -6,6 +6,41 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+class MaskBinarizer(torch.autograd.Function):
+    # Note that both forward and backward are @staticmethods
+    @staticmethod
+    def forward(ctx, inputs, masks):
+        ctx.save_for_backward(inputs, masks)
+        output = inputs * masks
+        return output
+
+    # This function has only a single output, so it gets only one gradient
+    @staticmethod
+    def backward(ctx, grad_output):
+        # This is a pattern that is very convenient - at the top of backward
+        # unpack saved_tensors and initialize all gradients w.r.t. inputs to
+        # None. Thanks to the fact that additional trailing Nones are
+        # ignored, the return statement is simple even when the function has
+        # optional inputs.
+        inputs, masks = ctx.saved_tensors
+        grad_input = grad_mask = None
+
+        # These needs_input_grad checks are optional and there only to
+        # improve efficiency. If you want to make your code simpler, you can
+        # skip them. Returning gradients for inputs that don't require it is
+        # not an error.
+        if ctx.needs_input_grad[0]:
+            # grad_input = grad_output * masks
+            grad_input = grad_output
+        if ctx.needs_input_grad[1]:
+            grad_mask  = (grad_output * inputs).sum(dim=0, keepdim=True)
+
+        # print(tuple(inputs.shape), tuple(masks.shape), tuple(grad_output.shape), tuple(grad_input.shape), tuple(grad_mask.shape))
+        return grad_input, grad_mask
+
+
+hadamard_product = torch.mul
+hadamard_product1 = MaskBinarizer.apply
 
 class LayerNorm(nn.LayerNorm):
     def __init__(self, normalized_shape, eps: float = 1e-5, elementwise_affine: bool = True) -> None:
@@ -57,7 +92,7 @@ class PatchEmbedding(nn.Module):
         embeddings = embeddings + self.position_embedding
 
         if hidden_z is not None:
-            embeddings = embeddings.mul(hidden_z)
+            embeddings = hadamard_product(embeddings, hidden_z)
 
         embeddings = self.dropout(embeddings)
 
@@ -107,14 +142,15 @@ class MultiHeadAttention(nn.Module):
 
         context_layer = torch.matmul(attention_probs, v)
         if heads_z is not None:
-            context_layer = context_layer.mul(heads_z)
+            context_layer = hadamard_product(context_layer, heads_z)
+
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
         shape = (*context_layer.size()[:-2], self.all_head_size)
         context_layer = context_layer.view(shape)
 
         outputs = self.proj(context_layer)
         if hidden_z is not None:
-            outputs = outputs.mul(hidden_z)
+            outputs = hadamard_product(outputs, hidden_z)
         outputs = self.proj_dropout(outputs)
 
         return outputs
@@ -136,11 +172,11 @@ class FeedForwardNetwork(nn.Module):
         hidden_states = self.dense1(hidden_states)
         hidden_states = self.intermediate_act_fn(hidden_states)
         if intermediate_z is not None:
-            hidden_states = hidden_states.mul(intermediate_z)
+            hidden_states = hadamard_product(hidden_states, intermediate_z)
 
         hidden_states = self.dense2(hidden_states)
         if hidden_z is not None:
-            hidden_states = hidden_states.mul(hidden_z)
+            hidden_states = hadamard_product(hidden_states, hidden_z)
         hidden_states = self.dropout(hidden_states)
 
         return hidden_states
@@ -260,14 +296,15 @@ class VisionTransformer(nn.Module):
         pooled_output = self.pooler(encoder_output) if self.pooler is not None else None
 
         if hidden_z is not None:
-            pooled_output = pooled_output.mul(hidden_z)
+            pooled_output = hadamard_product(pooled_output, hidden_z)
 
         logits = self.classifier(pooled_output[:, 0, :])
 
         return logits
 
 
-def vit_base_patch16_224(num_classes=1000):
+def vit_base_patch16_224(num_classes=1000, raw=False):
+    
     class ViTConfig:
         model_type = "vit"
         num_labels = num_classes
@@ -289,28 +326,38 @@ def vit_base_patch16_224(num_classes=1000):
 
 
     config = ViTConfig()
-    model = VisionTransformer(config)
+    if raw:
+        from rawvit import RawVisionTransformer
+        model = RawVisionTransformer(config)
+    else:
+        model = VisionTransformer(config)
 
     return model
 
 if __name__ == '__main__':
-    model = vit_base_patch16_224(1000)
+    model = vit_base_patch16_224(1000, False)
     model.eval()
-    dummy_input = torch.rand(1, 3, 224, 224)
-    state_dict = torch.load("state_dict.pth")
-    model.load_state_dict(state_dict)
-    with torch.no_grad():
-        logits = model(dummy_input)
-        print(logits.shape)
+    dummy_input = torch.rand(8, 3, 224, 224)
+    dummy_output = torch.randint(4, (8, ))
+    # state_dict = torch.load("state_dict.pth")
+    # model.load_state_dict(state_dict)
+    # with torch.no_grad():
+    #     logits = model(dummy_input)
+    #     print(logits.shape)
     
     from l0module import L0Module
     l0_module = L0Module(model.config, lagrangian_warmup=200, target_sparsity=0.5)
-    l0_module.train()
-    zs = l0_module()
     l0_module.eval()
     zs = l0_module()
     result = l0_module.calculate_model_size(zs)
 
-    with torch.no_grad():
-        logits = model(dummy_input, **zs)
-        print(logits.shape)
+    l0_module.train()
+    zs = l0_module()
+
+    logits = model(dummy_input, **zs)
+    loss = F.cross_entropy(logits, dummy_output)
+    loss.backward()
+
+    # print(logits.shape)
+    
+    
