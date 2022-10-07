@@ -172,7 +172,7 @@ class FeedForwardNetwork(nn.Module):
         hidden_states = self.dense1(hidden_states)
         hidden_states = self.intermediate_act_fn(hidden_states)
         if intermediate_z is not None:
-            hidden_states = hadamard_product1(hidden_states, intermediate_z)
+            hidden_states = hadamard_product(hidden_states, intermediate_z)
 
         hidden_states = self.dense2(hidden_states)
         if hidden_z is not None:
