@@ -218,6 +218,8 @@ class L0Module(nn.Module):
         return numpified_zs
 
     def calculate_model_size(self, zs):
+        if zs is None:
+            return {"pruned_sparsity": 0.0}
         numpified_zs = self.get_z_from_zs(zs)
         hidden_z = numpified_zs["hidden"]
         heads_z = numpified_zs["heads"]
@@ -267,6 +269,24 @@ class L0Module(nn.Module):
                 else:
                     zs[f"{t}_z"] = self._deterministic_z(self.sizes[t], self.hidden_loga.detach(), soft=soft)
         return zs 
+
+    @torch.no_grad()
+    def l0_mask(self):
+        zs = {f"{t}_z": [] for t in self.types}
+        # self.magical_number = 1.0
+        get_mask = lambda loga: torch.sigmoid(loga / self.temperature * self.magical_number)
+        for t in self.types:
+            if t == "hidden":
+                zs[f"{t}_z"] = get_mask(self.hidden_loga)
+            else:
+                tmp = []
+                loga_all_layers = self.z_logas[t]
+                for layer in range(len(loga_all_layers)):
+                    loga = loga_all_layers[layer]
+                    z = get_mask(loga)
+                    tmp.append(z.reshape(self.shapes[t][1:]))
+                zs[f"{t}_z"] = torch.stack(tmp)
+        return zs
 
 if __name__ == '__main__':
     from collections import namedtuple
