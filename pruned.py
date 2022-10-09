@@ -7,7 +7,8 @@ from tqdm import tqdm
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torchvision.datasets import CIFAR10
+from torchvision.datasets import CIFAR10, ImageFolder
+
 import torchvision.transforms as T
 
 
@@ -197,21 +198,27 @@ if __name__ == '__main__':
     device = torch.device("cuda:7")
     # device = torch.device("cpu")
 
-    exp_name = "spar70"
-
-    model = vit_base_patch16_224(10)
+    model = vit_base_patch16_224(1000)
     l0module = L0Module(model.config)
 
-    model.load_state_dict(torch.load(f"cache/{exp_name}/model.pth"))
-    l0module.load_state_dict(torch.load(f"cache/{exp_name}/l0_module.pth"))
+    # model.load_state_dict(torch.load(f"cache/{exp_name}/model.pth"))
+    # l0module.load_state_dict(torch.load(f"cache/{exp_name}/l0_module.pth"))
+    exp_name = "cofi/spar65_w5t15"
+    model.load_state_dict(torch.load(f"../outputs/{exp_name}/last_model.pth"))
+    l0module.load_state_dict(torch.load(f"../outputs/{exp_name}/last_l0module.pth"))
 
     model = model.to(device)
     l0module = l0module.to(device)
 
     model.eval()
-    # l0module.eval()
+    l0module.eval()
+
+    # zs = l0module.forward()
+    zs = l0module.l0_mask()
+    # zs = None
 
     zs = l0module.forward()
+
     results = l0module.calculate_model_size(zs)
     sparsity = results["pruned_sparsity"]
 
@@ -219,23 +226,45 @@ if __name__ == '__main__':
     IMAGENET_DEFAULT_MEAN = (0.5, 0.5, 0.5)
     IMAGENET_DEFAULT_STD = (0.5, 0.5, 0.5)
 
-    test_transform = T.Compose([
+    # test_transform = T.Compose([
+    #     T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
+    #     T.ToTensor(),
+    #     T.Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
+    # ])
+
+    # dataset = CIFAR10("../../data", download=False, train=False, transform=test_transform)
+    # dataloader = DataLoader(dataset, batch_size=100, num_workers=2)
+
+    transform = T.Compose([
         T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
+        T.CenterCrop(224),
         T.ToTensor(),
         T.Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
     ])
+    dataset = ImageFolder("../../data/imagenet/val", transform=transform)
+    dataloader_config = {
+        "batch_size": 128,
+        "num_workers": 4,
+        "drop_last": True,
+        "pin_memory": True
+    }
+    dataloader = DataLoader(dataset, **dataloader_config)
 
-    dataset = CIFAR10("../../data", download=False, train=False, transform=test_transform)
-    dataloader = DataLoader(dataset, batch_size=100, num_workers=2)
 
     accuracy, latency = eval(model, dataloader, device, zs)
     print(f"Sparsity: {sparsity:.2%}. Accuracy: {accuracy:.2%}. Latency: {latency*10e3:.1f} ms")
 
-    # pruned_model = vit_base_patch16_224(10, True)
+    # pruned_model = vit_base_patch16_224(1000, True)
     # pruned_model = prune_vit(pruned_model, model.state_dict(), zs)
     # pruned_model.eval()
     # pruned_model = pruned_model.to(device)
-
     # accuracy, latency = eval(pruned_model, dataloader, device)
     # print(f"Sparsity: {sparsity:.2%}. Accuracy: {accuracy:.2%}. Latency: {latency*10e3:.1f} ms")
+
+    # from fvcore import nn as fvnn
+    # dummy_input = torch.randn(1, 3, 224, 224).to(device)
+    # params_base = fvnn.parameter_count(model)['']
+    # params_pruned = fvnn.parameter_count(pruned_model)['']
+    # sparsity = 1 - (params_pruned / params_base)
+    # print(sparsity, f"{params_pruned/1e6:.1f}")
 
