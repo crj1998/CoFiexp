@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision.datasets import CIFAR10, ImageFolder
+
 import torchvision.transforms as T
 
 
@@ -197,8 +198,6 @@ if __name__ == '__main__':
     device = torch.device("cuda:7")
     # device = torch.device("cpu")
 
-    # exp_name = "spar70"
-
     model = vit_base_patch16_224(1000)
     l0module = L0Module(model.config)
 
@@ -217,6 +216,9 @@ if __name__ == '__main__':
     # zs = l0module.forward()
     zs = l0module.l0_mask()
     # zs = None
+
+    zs = l0module.forward()
+
     results = l0module.calculate_model_size(zs)
     sparsity = results["pruned_sparsity"]
 
@@ -248,6 +250,7 @@ if __name__ == '__main__':
     }
     dataloader = DataLoader(dataset, **dataloader_config)
 
+
     accuracy, latency = eval(model, dataloader, device, zs)
     print(f"Sparsity: {sparsity:.2%}. Accuracy: {accuracy:.2%}. Latency: {latency*10e3:.1f} ms")
 
@@ -264,3 +267,4 @@ if __name__ == '__main__':
     # params_pruned = fvnn.parameter_count(pruned_model)['']
     # sparsity = 1 - (params_pruned / params_base)
     # print(sparsity, f"{params_pruned/1e6:.1f}")
+

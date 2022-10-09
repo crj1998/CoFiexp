@@ -1,4 +1,5 @@
 from copy import deepcopy
+
 import os, math, time, random
 import argparse, logging
 from tqdm import tqdm
@@ -22,6 +23,7 @@ from torch.utils.data.distributed import DistributedSampler
 from contextlib import contextmanager
 
 from utils import get_logger, colorstr, setup_seed, unwrap_model, AverageMeter
+
 
 @contextmanager
 def torch_distributed_zero_first(rank):
@@ -60,6 +62,7 @@ def valid(model, dataloader, l0_module, args):
     return acc
 
 def train(epoch, iters, model, dataloader, criterion, optimizer, scheduler, l0_module, l0_optimizer, args, teacher=None):
+
     Loss = AverageMeter()
     Acc = AverageMeter()
 
@@ -91,6 +94,7 @@ def train(epoch, iters, model, dataloader, criterion, optimizer, scheduler, l0_m
 
         lagran_loss, expected_sparsity, target_sparsity = unwrap_model(l0_module).lagrangian_regularization(args.global_step)
         loss = distil_loss + lagran_loss
+
 
         l0_optimizer.zero_grad()
         optimizer.zero_grad()
@@ -215,11 +219,13 @@ def main(args):
         else:
             teacher = None
 
+
     # model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model.to(args.device)
     l0_module.to(args.device)
     if args.teacher:
         teacher.to(args.device)
+
     criterion = nn.CrossEntropyLoss(reduction='mean').to(args.device)
     # make optimizer, scheduler
     no_decay = ["bias", "layernorm"]
@@ -261,6 +267,7 @@ def main(args):
         l0_module = DDP(l0_module, device_ids=[args.local_rank], output_device=args.local_rank, find_unused_parameters=False)
 
 
+
     model.zero_grad()
     l0_module.zero_grad()
     best_acc = 0.0
@@ -269,6 +276,7 @@ def main(args):
     for epoch in range(args.total_step//args.valid_step):
         train_loader.sampler.set_epoch(epoch)
         loss, train_acc = train(epoch, args.valid_step, model, train_loader, criterion, optimizer, scheduler, l0_module, l0_optimizer, args, teacher)
+
         acc = valid(model, valid_loader, l0_module, args)
         if args.local_rank in [-1, 0]:
             if acc > best_acc:
@@ -303,6 +311,7 @@ if __name__ == "__main__":
     parser.add_argument("--teacher", action="store_true", default=False)
     parser.add_argument("--distill_temp", type=float, default=2.0)
 
+
     parser.add_argument("--sparsity", type=float, default=0.5)
     parser.add_argument("--sparsity_warmup", type=int, default=2048*5)
 
@@ -319,4 +328,5 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node 4 l0ddp.py --suffix dev -
 CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node 4 l0ddp.py --suffix spar05_w5t15 --datafolder ../../data/imagenet --out ../outputs --pretrained ./cache/pretrained.pth --learning_rate 0.00002
 
 CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node 4 l0ddp.py --suffix spar60_w5t15_teacher --datafolder ../../data/imagenet --out ../outputs --pretrained ./cache/pretrained.pth --learning_rate 0.00002 --sparsity 0.60 --teacher
+
 """
